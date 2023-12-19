@@ -2,7 +2,29 @@ import tkinter as tk
 from tkinter import ttk
 from pytube import Playlist, YouTube
 from moviepy.editor import *
-from tkinter.scrolledtext import ScrolledText
+from urllib.parse import urlparse
+from urllib.parse import parse_qs
+"""
+
+TODO: what about videos that contain &list=' in the url. technically this is a video in a playlist
+
+https://www.youtube.com/watch?v=SelawmXHtPg&list=PL3JVwFmb_BnSOj_OtnKlsc2c7Jcs6boyB&index=1
+
+https://www.youtube.com/playlist?list=PL3JVwFmb_BnSOj_OtnKlsc2c7Jcs6boyB
+
+Either use import urlparse
+or RegeXXXX
+
+create a popup: "Playlist detected -> do you want to fetch the whole playlist?"
+Yes _> extract link and paste it into current input
+no -> just fetch Video
+
+TODO: error handling for private playlists or videos
+# i suppose i wont get a valid response... 
+
+"""
+
+
 class Downloader:
     window = None
     linkListContainer = None
@@ -13,13 +35,16 @@ class Downloader:
     destroyCount = 0
     frame_id = None
     canvas  = None
+    popupWindow = None
+    errorMSG = ''
     def __init__(self):
         #https://www.youtube.com/playlist?list=PL3Qgpx2KozbJezBzfQ82jLiEeZwjEtejc
         self.window = window = tk.Tk()
         window.title("YouTube Downloader")
         window.geometry("600x400")
+        window.minsize(600, 400)
+        window.iconbitmap('themes/app.ico')
         
-
         container = ttk.Frame(self.window)
         self.canvas = canvas = tk.Canvas(container)
         scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
@@ -38,9 +63,10 @@ class Downloader:
         container.pack(fill="both",expand=True,side="top", anchor='nw')
         canvas.pack(side="left", fill="both", expand=True,padx=5)
         scrollbar.pack(side="right", fill="y")
-        canvas.bind('<MouseWheel>', lambda event: canvas.yview_scroll(-int(event.delta / 60), "units"))
+        #canvas.bind('<MouseWheel>', lambda event: canvas.yview_scroll(-int(event.delta / 60), "units"))
+        canvas.bind('<MouseWheel>', lambda event: self.scroll_canvas(event))
         canvas.bind("<Configure>", self.resize_frame)
-        scrollable_frame.bind('<MouseWheel>', lambda event: canvas.yview_scroll(-int(event.delta / 60), "units"))
+        scrollable_frame.bind('<MouseWheel>', lambda event: self.scroll_canvas(event))
         self.addLinkEntry()
 
         
@@ -49,11 +75,14 @@ class Downloader:
         self.downloadType = tk.StringVar()
         options = ["MP3", "MP4"]
         optionMenu = ttk.OptionMenu(fetch_frame, self.downloadType , "Select Type", *options)
-        fetchButton = ttk.Button(master=fetch_frame, text="Download", command=self.fetch)
-        fetchButton.pack(side='left')
+        
+        addButton = ttk.Button(master=fetch_frame, text="Add input", command=self.addLinkEntry)
+        addButton.pack(side='left',padx=3)
         destroyButton = ttk.Button(master=fetch_frame, text="Clear All", command=self.destroy)
-        destroyButton.pack(side='left')
-        optionMenu.pack(side='left')
+        destroyButton.pack(side='left',padx=3)
+        fetchButton = ttk.Button(master=fetch_frame, text="Download", command=self.fetch)
+        fetchButton.pack(side='left',padx=3)
+        optionMenu.pack(side='left',padx=3)
         fetch_frame.pack(side='bottom', pady=(0,5))
 
         message_frame = ttk.Frame(master = window, height=40)
@@ -66,11 +95,27 @@ class Downloader:
         self.message.configure(text="Please insert any YouTubeLink into the link text field")
         message_frame.pack(side='bottom',expand=False, pady=(0,5))
         style = ttk.Style(window)
+        self.window.tk.call('source','themes/azure/azure.tcl')
+        self.window.tk.call('set_theme','light')#dark
+
         style.configure("success.TLabel", foreground="black", background="green")          
         style.configure("error.TLabel", foreground="black", background="red")
         window.mainloop()
 
 
+    def scroll_canvas(self,event):
+        """
+        TODO
+        Either make this dynamic and calc by what you can acutally see
+        
+        print(f"canvas {self.canvas.winfo_rootx()}, {self.canvas.winfo_rooty()}")
+
+        print(f"entry {entry.winfo_rootx()}, {entry.winfo_rooty()}")
+
+        or simply to the lazy aproach and assume if more than 4 [actual 5] liste ntrys are there we have to scroll
+        """
+        if ( len(self.entryList) > 4):           
+            self.canvas.yview_scroll(-int(event.delta / 60), "units")
 
     def resize_frame(self, e):
         self.canvas.itemconfig(self.frame_id, width=(e.width-5))
@@ -86,22 +131,28 @@ class Downloader:
         link.trace_add('write',callback=lambda x, y, z, sv=link: self.callback(link, title, append))
         linkEntry = ttk.Entry(master=link_frame, textvariable=link)
         linkTitle = ttk.Entry(master=link_frame,textvariable=title)
+        linkEntry.insert(0, 'Input a link')
+        linkEntry.bind("<FocusIn>", lambda args: linkEntry.delete('0', 'end') if (linkEntry.get() == "Input a link") else '')
         deleteEntry = ttk.Button(master=link_frame, text="Delete", command= lambda: self.deleteEntry(link_frame))
-        deleteEntry.pack(side='right',expand=False,fill='y')
+        deleteEntry.pack(side='right',expand=False,fill='y',padx=(3,0))
         linkEntry.pack(expand=True, fill='x')
         linkTitle.pack(expand=True, fill='x')
         link_frame.pack(pady=(10,0),expand=True, fill='x')
-        linkEntry.bind('<MouseWheel>', lambda event: self.canvas.yview_scroll(-int(event.delta / 60), "units"))
-        linkTitle.bind('<MouseWheel>', lambda event: self.canvas.yview_scroll(-int(event.delta / 60), "units"))
-        deleteEntry.bind('<MouseWheel>', lambda event: self.canvas.yview_scroll(-int(event.delta / 60), "units"))
+        linkEntry.bind('<MouseWheel>', lambda event: self.scroll_canvas(event))
+        linkTitle.bind('<MouseWheel>', lambda event: self.scroll_canvas(event))
+        deleteEntry.bind('<MouseWheel>', lambda event: self.scroll_canvas(event))
         if (videoLink != None):
             link.set(videoLink)
         self.entryList.append(link_frame)
 
     def deleteEntry(self, link_frame):
+
         link_frame.pack_forget()
+        if (link_frame.winfo_children()[0].get() == 'Input a link' and len(self.entryList) > 1):
+            pass
+        else:
+            self.addLinkEntry()
         self.entryList.remove(link_frame)
-        self.addLinkEntry()
 
     def fetch(self):
         self.message.configure(text="Starting download...")
@@ -119,22 +170,29 @@ class Downloader:
                 if (len(children)>0):
                     link = children[0].get() # link
                     title = children[1].get()
-                    if (len(link)>0 and len(title)>0):
+                    if ((len(link)>0 and len(title)>0) or (self.videoOrPlaylist(link) != 1 and title != "Fetching Playlist...") or (len(title)>0)):
                         if (self.videoOrPlaylist(link) == 0):
                             #download video
                             title = self.cleanTitle(title)
+                            response = False
                             if (fileType == "MP3"):
-                                self.downloadFile(link, 0, title)
+                                response = self.downloadFile(link, 0, title)
                             elif (fileType == "MP4"):
-                                self.downloadFile(link, 1, title)
-                            children[0].configure(style="success.TLabel")
-                            children[1].configure(style="success.TLabel")
-                           
+                                response= self.downloadFile(link, 1, title)
+                            if (response == True):
+                                children[0].configure(style="success.TLabel")
+                                children[1].configure(style="success.TLabel")
+                            else:
+                                wrong = True
+                                children[0].configure(style="error.TLabel")
+                                children[1].configure(style="error.TLabel")
                         else:
                             wrong = True
                             children[0].configure(style="error.TLabel")
                             children[1].configure(style="error.TLabel")
-                            
+                    elif (link != 'Input a link'):
+                        children[0].configure(style="")
+                        children[1].configure(style="")
                     else:
                         children[0].configure(style="")
                         children[1].configure(style="")
@@ -145,7 +203,8 @@ class Downloader:
             if (wrong == False):
                 self.message.configure(text="Download Complete!")
             else:
-                self.message.configure(text="Please check wrong items")
+                self.message.configure(text="Please check wrong items. Errors: " +  self.errorMSG)
+                self.errorMSG = ''
             progress.set(lenOfList)
         else:
             self.message.configure(text="Please select a filetype!")
@@ -154,8 +213,8 @@ class Downloader:
         title = title.replace('\'',"").replace("/","").replace(":","").replace("*","").replace("?","").replace('"',"").replace('"',"").replace('<',"").replace('<',"").replace('|',"")
         return title
 
-
-    def downloadFile(self,link,fileType, title):
+    def downloadFile(self, link, fileType, title):
+        status = False
         v = YouTube(link)
         basepath = os.path.dirname(os.path.realpath(__file__))
         outputPath = os.path.join(basepath,"output")
@@ -163,38 +222,89 @@ class Downloader:
             os.mkdir(outputPath)
         except:
             pass
-        if (fileType == 0):# mp3
-            v.streams.get_audio_only().download(output_path=str(outputPath), filename=(title+'.mp3'))
-        if (fileType == 1): #mp4
-            v.streams.get_highest_resolution().download(output_path=str(outputPath), filename=(title+'.mp4'))
-        else:
-            #wrong filetype
-            pass
-
+        try:
+            if (fileType == 0):# mp3
+                v.streams.get_audio_only().download(output_path=str(outputPath), filename=(title+'.mp3'))
+                status = True
+            elif (fileType == 1): #mp4
+                v.streams.get_highest_resolution().download(output_path=str(outputPath), filename=(title+'.mp4'))
+                status = True
+            else:
+                status = False
+                #wrong filetype
+                pass
+        except Exception as e:
+            #print(str(e))
+            self.errorMSG = self.errorMSG + f' {str(e)}'
+            status = False
+        finally:
+            return status
 
     def videoOrPlaylist(self, str):
         if "watch" in str:
+            if ("&list=" in str):
+                return 2
             return 0
         elif "playlist" in str:
             return 1
         else:
             return None
 
-    def callback(self, linkVar, titleBar, append):
+    def callback(self, linkVar, titleBar, append, presetLink = None):
+        #print(f"callback from {linkVar} {titleBar} append: {append} linK {presetLink}")
+        if (presetLink != None):
+            linkVar.set(presetLink)
         link = linkVar.get()
         if(self.videoOrPlaylist(link) == 0):
-            #video, so append titlefield
-            titleBar.set(self.getVideoTitle(link))
-            #if video title added, add a new row to insert line
-
+                    #video, so append titlefield
+                    titleBar.set(self.getVideoTitle(link))
+                    #if video title added, add a new row to insert line
         elif(self.videoOrPlaylist(link) == 1):
             #fetch all entries
             videos = self.getPlaylistVideos(link)
-            titleBar.set("Fetching Playlist...")
-            for video in videos:
-                self.addLinkEntry(video)
+            if (titleBar.get() != "Fetching Playlist..."): # check if already fetched to prevent double loading.... can cause some issues
+                if ( len(videos)>0):
+                    titleBar.set("Fetching Playlist...")
+                    for video in videos:
+                        self.addLinkEntry(video)
+                else:
+                    titleBar.set("Error fetching Playlist, private link?")
+                append = True
+            else:
+                append = False
+        elif(self.videoOrPlaylist(link) == 2):
+            append = False
+            #fetch all entries
+            #https://www.youtube.com/watch?v=SelawmXHtPg&list=PL3JVwFmb_BnSOj_OtnKlsc2c7Jcs6boyB&index=1
+            parsed_url = urlparse(link)
+            listParam = parse_qs(parsed_url.query)['list'][0]
+            watchParam = parse_qs(parsed_url.query)['v'][0]
+            videoLink = f"https://www.youtube.com/watch?v={watchParam}"
+            playlistLink = f"https://www.youtube.com/playlist?list={listParam}"
+            #linkVar.set()
+            """
+            Create Popup
+            TODO rework this___            
+            """
+            self.popupWindow = tk.Toplevel(self.window)
+            self.popupWindow.iconbitmap('themes/app.ico')
+            #style = ttk.Style(self.popupWindow)
+            #self.popupWindow.tk.call('source','themes/azure/azure.tcl')
+            
+            label = tk.Label(self.popupWindow, text="Video in playlist detected, do you \nwant to fetch the whole playlist?")
+            label.pack(fill='x', padx=50, pady=5)
+            button_yes = tk.Button(self.popupWindow, text="Yes", width=5, command=lambda: [self.popupWindow.destroy(), self.callback(linkVar, titleBar, False, playlistLink)])
+            button_yes.pack(fill='x',side="left",pady=10, padx=15)
+            button_no = tk.Button(self.popupWindow, text="No", width=5, command=lambda: [self.callback(linkVar, titleBar, False, videoLink), self.popupWindow.destroy()])
+            button_no.pack(fill='x',side="right",pady=10, padx=15)
+            #TODO fix styling for popup
+            self.popupWindow.tk.call('set_theme','light')#dark
         else:
-            titleBar.set("Not a valid Link")
+            if (link == 'Input a link' or link == ''):
+                titleBar.set("")
+            else:
+                titleBar.set("Not a valid Link")
+            #TODO add message for private playlist/video
             append = False
         if (append):
             self.addLinkEntry()
@@ -206,7 +316,7 @@ class Downloader:
             for video in v.videos:
                 titles.append(video.watch_url)
         except:
-            titles.append("Error fetching Title, wrong or broken link?")
+            titles.append("Error fetching Title, wrong/broken or private link?")
         finally:
             return titles
 
@@ -216,7 +326,7 @@ class Downloader:
             v = YouTube(link)
             title = v.title
         except:
-            title = "Error fetching Title, wrong or broken link?"
+            title = "Error fetching Title, wrong/broken or private link?"
         finally:
             return title
 
@@ -227,6 +337,8 @@ class Downloader:
         else:
             for entry in self.entryList:
                 entry.pack_forget()
+            if (self.progressBar != None):
+                self.progressBar.pack_forget()
             self.entryList.clear()
             self.addLinkEntry()
             self.message.configure(text="Please insert any YouTubeLink into the link text field")      
