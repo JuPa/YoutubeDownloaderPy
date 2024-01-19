@@ -4,6 +4,7 @@ from pytube import Playlist, YouTube
 from moviepy.editor import *
 from urllib.parse import urlparse
 from urllib.parse import parse_qs
+
 """
 
 TODO: what about videos that contain &list=' in the url. technically this is a video in a playlist
@@ -216,18 +217,18 @@ class Downloader:
     def downloadFile(self, link, fileType, title):
         status = False
         v = YouTube(link)
-        basepath = os.path.dirname(os.path.realpath(__file__))
-        outputPath = os.path.join(basepath,"output")
+        #basepath = os.path.dirname(os.path.realpath(__file__))
+        #outputPath = os.path.join(basepath,"output")
         try:
-            os.mkdir(outputPath)
+            os.mkdir("/output")
         except:
             pass
         try:
             if (fileType == 0):# mp3
-                v.streams.get_audio_only().download(output_path=str(outputPath), filename=(title+'.mp3'))
+                v.streams.get_audio_only().download(output_path="output", filename=(title+'.mp3'))
                 status = True
             elif (fileType == 1): #mp4
-                v.streams.get_highest_resolution().download(output_path=str(outputPath), filename=(title+'.mp4'))
+                v.streams.get_highest_resolution().download(output_path="output", filename=(title+'.mp4'))
                 status = True
             else:
                 status = False
